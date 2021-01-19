@@ -34,7 +34,7 @@ resource "google_pubsub_topic" "hello" {
 }
 
 # -----------------------------------------------------------------------------
-# CLOUD FUNCTION
+# STORAGE BUCKET
 # -----------------------------------------------------------------------------
 
 resource "google_storage_bucket" "functions" {
@@ -42,16 +42,20 @@ resource "google_storage_bucket" "functions" {
   name    = "${google_project.project.project_id}-functions"
 }
 
-data "archive_file" "hello_trigger" {
+# -----------------------------------------------------------------------------
+# PUB/SUB CLOUD FUNCTION
+# -----------------------------------------------------------------------------
+
+data "archive_file" "pubsub_trigger" {
   type        = "zip"
-  source_dir  = "${path.module}/hello-pubsub"
-  output_path = "${path.module}/hello_trigger.zip"
+  source_file = "${path.module}/hello_pubsub.go"
+  output_path = "${path.module}/pubsub_trigger.zip"
 }
 
-resource "google_storage_bucket_object" "hello_trigger" {
+resource "google_storage_bucket_object" "pubsub_trigger" {
   bucket = google_storage_bucket.functions.name
-  name   = "hello_trigger-${data.archive_file.hello_trigger.output_md5}.zip"
-  source = data.archive_file.hello_trigger.output_path
+  name   = "pubsub_trigger-${data.archive_file.pubsub_trigger.output_md5}.zip"
+  source = data.archive_file.pubsub_trigger.output_path
 }
 
 resource "google_project_service" "cloudbuild" {
@@ -64,7 +68,7 @@ resource "google_project_service" "cloudfunctions" {
   service = "cloudfunctions.googleapis.com"
 }
 
-resource "google_cloudfunctions_function" "hello" {
+resource "google_cloudfunctions_function" "pubsub_trigger" {
   project = google_project.project.project_id
   name    = "hello-pubsub"
   region  = "us-central1"
@@ -73,7 +77,7 @@ resource "google_cloudfunctions_function" "hello" {
   runtime     = "go113"
 
   source_archive_bucket = google_storage_bucket.functions.name
-  source_archive_object = google_storage_bucket_object.hello_trigger.name
+  source_archive_object = google_storage_bucket_object.pubsub_trigger.name
 
   event_trigger {
     event_type = "google.pubsub.topic.publish"
@@ -104,10 +108,10 @@ resource "google_project_service" "cloudscheduler" {
   service = "cloudscheduler.googleapis.com"
 }
 
-resource "google_cloud_scheduler_job" "hello_job" {
+resource "google_cloud_scheduler_job" "hello_pubsub_job" {
   project  = google_project.project.project_id
-  region   = google_cloudfunctions_function.hello.region
-  name     = "hello-job"
+  region   = google_cloudfunctions_function.pubsub_trigger.region
+  name     = "hello-pubsub-job"
   schedule = "every 10 minutes"
 
   pubsub_target {
